@@ -46,11 +46,11 @@ const PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gendo Guard for Strike</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Ccircle cx='13' cy='13' r='12' fill='%230d0b09' stroke='%23efe7d8' stroke-width='2'/%3E%3Cpath d='M13 1a12 12 0 0 1 0 24z' fill='%23e0452b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <style>
 :root{--ink:#0d0b09;--ink2:#15120f;--ink3:#1a1612;--line:#2a241e;--paper:#efe7d8;--soft:#b9afa0;--mute:#8f8578;--red:#e0452b;--green:#7fb069}
 *{box-sizing:border-box}body{margin:0;background:var(--ink);color:var(--paper);font:14px/1.45 "Zen Kaku Gothic New",system-ui,sans-serif}
-.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.mono{font-variant-numeric:tabular-nums}
 .band{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:5px 16px;font-size:12px;color:var(--soft);background:repeating-linear-gradient(-45deg,#15120f 0 10px,#1a1612 10px 20px);border-bottom:1px solid var(--line)}
 .band b{color:var(--paper)}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line)}
