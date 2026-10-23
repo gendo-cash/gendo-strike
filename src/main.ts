@@ -1,0 +1,61 @@
+// gendo-strike: an MCP server an AI app starts, plus the owner's dashboard, in one process.
+//
+//   gendo-strike [--mandate mandate.json] [--home ~/.gendo-strike] [--port 8711] [--network testnet|mainnet]
+//   env: STRIKE_API_KEY   the Strike API wallet's private key (hex). Without it, a paper account at Strike's prices.
+//
+// The AI app (Claude Desktop, Claude Code, Cursor...) only sees the tools. The key stays in this process.
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { parseArgs } from "node:util";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { PaperBroker, StrikeBroker } from "./broker.ts";
+import { startDashboard } from "./dashboard.ts";
+import { Guard } from "./guard.ts";
+import { EXAMPLE_MANDATE, mandateProblems, type Mandate } from "./mandate.ts";
+import { StrikeClient, apiKeyFromHex, type StrikeNetwork } from "./strike.ts";
+import { INSTRUCTIONS, registerTools } from "./tools.ts";
+
+// stdout carries the MCP protocol; anything else printed there would corrupt it.
+console.log = (...a: unknown[]) => console.error(...a);
+
+const { values: v } = parseArgs({
+  options: { mandate: { type: "string" }, home: { type: "string" }, port: { type: "string" }, network: { type: "string" }, "no-mcp": { type: "boolean" } },
+});
+const home = resolve(v.home ?? process.env.GENDO_STRIKE_HOME ?? join(homedir(), ".gendo-strike"));
+mkdirSync(home, { recursive: true, mode: 0o700 });
+
+const mandatePath = resolve(v.mandate ?? join(home, "mandate.json"));
+if (!existsSync(mandatePath)) writeFileSync(mandatePath, JSON.stringify(EXAMPLE_MANDATE, null, 2) + "\n");
+const mandate = JSON.parse(readFileSync(mandatePath, "utf8")) as Mandate;
+const problems = mandateProblems(mandate);
+if (problems.length) {
+  console.error(`mandate ${mandatePath}: ${problems.join("; ")}`);
+  process.exit(2);
+}
+
+const network = (v.network ?? process.env.STRIKE_NETWORK ?? "testnet") as StrikeNetwork;
+if (network !== "testnet" && network !== "mainnet") throw new Error("--network is testnet or mainnet");
+const keyHex = process.env.STRIKE_API_KEY?.trim();
+const client = new StrikeClient(network, keyHex ? apiKeyFromHex(keyHex) : undefined);
+const broker = keyHex ? new StrikeBroker(client) : new PaperBroker(client, Number(process.env.PAPER_USD ?? 1000));
+const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `journal-${network}.jsonl` : "journal-paper.jsonl"));
+
+// The owner's token: resuming after a stop needs it. Kept in the home folder, which the agent can't read through its tools.
+const tokenPath = join(home, "owner-token");
+if (!existsSync(tokenPath)) writeFileSync(tokenPath, randomBytes(18).toString("base64url") + "\n", { mode: 0o600 });
+const ownerToken = readFileSync(tokenPath, "utf8").trim();
+const port = Number(v.port ?? process.env.GENDO_STRIKE_PORT ?? 8711);
+startDashboard(guard, port, ownerToken);
+setInterval(() => void guard.watch().catch((e) => console.error(`watch: ${(e as Error).message}`)), 15_000);
+
+console.error(`gendo-strike: ${broker.mode === "strike" ? `Strike ${network} account` : `paper account at Strike ${network} prices`}; mandate ${mandatePath}`);
+console.error(`owner dashboard: http://127.0.0.1:${port}/?owner=${ownerToken}`);
+
+if (!v["no-mcp"]) {
+  const server = new McpServer({ name: "gendo-strike", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  registerTools(server, guard);
+  await server.connect(new StdioServerTransport());
+}

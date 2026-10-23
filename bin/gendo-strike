@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Runs from anywhere: resolves the project, then starts the MCP server and the owner dashboard.
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+exec "$ROOT/node_modules/.bin/tsx" "$ROOT/src/main.ts" "$@"

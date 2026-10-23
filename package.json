@@ -1,0 +1,21 @@
+{
+  "name": "gendo-strike",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Gendo Guard for Strike: AI agents trade Strike perpetuals inside a mandate their owner sets. The agent never holds the key.",
+  "engines": { "node": ">=22" },
+  "bin": { "gendo-strike": "./bin/gendo-strike" },
+  "scripts": { "test": "vitest run", "typecheck": "tsc --noEmit -p ." },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "tsx": "4.23.15",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}
