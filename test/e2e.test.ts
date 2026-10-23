@@ -77,4 +77,19 @@ describe("gendo-strike over MCP", () => {
     expect(JSON.parse(readFileSync(join(home, "mandate.json"), "utf8"))).toEqual(next);
     expect((await (await dash("/api/markets")).json()).markets).toContain("BTC-USD");
   });
+  it("a second copy, as an AI app starts for another chat, trades through the first: one journal, one stop", async () => {
+    const second = new Client({ name: "e2e-2", version: "0" });
+    await second.connect(new StdioClientTransport({ command: join(import.meta.dirname, "../bin/gendo-strike"), args: ["--home", home, "--port", String(port)], env: { ...process.env, STRIKE_API_KEY: "" } as Record<string, string> }));
+    try {
+      const call2 = async (name: string, args: Record<string, unknown> = {}) => JSON.parse(((await second.callTool({ name, arguments: args })) as { content: { text: string }[] }).content[0]!.text);
+      expect(await call2("open_position", { symbol: "ETH-USD", side: "long", notional_usd: 100, leverage: 2, reason: "from the second window" })).toMatchObject({ status: "filled" });
+      const s = await (await dash("/api/state")).json();
+      expect(s.journal[0]).toMatchObject({ kind: "order", reason: "from the second window" });
+      await dash("/api/stop", { method: "POST" });
+      expect(await call2("open_position", { symbol: "ETH-USD", side: "long", notional_usd: 100, leverage: 2, reason: "after the stop" })).toMatchObject({ code: "LOCKED" });
+      expect((await (await dash("/api/agent/trade", { method: "POST", body: "{}" })).status)).toBe(403); // only a guard copy may forward
+    } finally {
+      await second.close();
+    }
+  });
 });

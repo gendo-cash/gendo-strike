@@ -35,7 +35,8 @@ function asMandate(x: unknown): Mandate | undefined {
 const STRIKE_LOGO = readFileSync(new URL("../assets/strike-logo.png", import.meta.url));
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export function startDashboard(guard: Guard, port: number, ownerToken: string) {
+/** Starts the dashboard; rejects with EADDRINUSE when another copy already serves this port. */
+export function startDashboard(guard: Guard, port: number, ownerToken: string, agentToken: string): Promise<import("node:http").Server> {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const send = (code: number, type: string, body: string) => {
@@ -61,6 +62,17 @@ export function startDashboard(guard: Guard, port: number, ownerToken: string) {
         const r = guard.setMandate(m);
         return r.ok ? send(200, "application/json", JSON.stringify({ ok: true, mandate: guard.mandate })) : send(400, "application/json", JSON.stringify({ problems: r.problems }));
       }
+      // Other copies of the guard (an AI app may start several) forward the agent's orders here, so there is one
+      // set of rules, one journal and one stop. They prove they run as this user with the agent token file.
+      if (req.method === "POST" && (url.pathname === "/api/agent/trade" || url.pathname === "/api/agent/close")) {
+        if (!same(req.headers["x-agent-token"]?.toString() ?? "", agentToken)) return send(403, "application/json", JSON.stringify({ error: "not a guard copy" }));
+        const b = (await readJson(req)) as Record<string, unknown> | undefined;
+        if (!b) return send(400, "application/json", JSON.stringify({ error: "bad request" }));
+        const out = url.pathname.endsWith("trade")
+          ? await guard.trade({ symbol: String(b.symbol), side: b.side === "sell" ? "sell" : "buy", notionalUsd: Number(b.notionalUsd), leverage: Number(b.leverage), reason: String(b.reason ?? "") })
+          : await guard.close(String(b.symbol), String(b.reason ?? ""));
+        return send(200, "application/json", JSON.stringify(out));
+      }
       if (req.method === "POST" && url.pathname === "/api/stop") {
         await guard.kill("stopped by the owner");
         return send(200, "application/json", JSON.stringify({ ok: true }));
@@ -75,8 +87,25 @@ export function startDashboard(guard: Guard, port: number, ownerToken: string) {
       send(502, "application/json", JSON.stringify({ error: (e as Error).message }));
     }
   });
-  server.listen(port, "127.0.0.1");
-  return server;
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+}
+
+/** Stands in for the guard in a second copy: every call goes to the copy that owns the dashboard. */
+export function forwardingGuard(port: number, agentToken: string) {
+  const base = `http://127.0.0.1:${port}`;
+  const post = async (path: string, body: unknown) => {
+    const r = await fetch(base + path, { method: "POST", headers: { "content-type": "application/json", "x-agent-token": agentToken }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`the guard answered ${r.status}`);
+    return r.json();
+  };
+  return {
+    snapshot: async () => (await (await fetch(`${base}/api/state`)).json()) as Awaited<ReturnType<Guard["snapshot"]>>,
+    trade: (i: Parameters<Guard["trade"]>[0]) => post("/api/agent/trade", i) as ReturnType<Guard["trade"]>,
+    close: (symbol: string, reason: string) => post("/api/agent/close", { symbol, reason }) as ReturnType<Guard["close"]>,
+  };
 }
 
 const PAGE = `<!doctype html>

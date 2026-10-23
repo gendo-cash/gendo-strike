@@ -13,11 +13,11 @@ import { parseArgs } from "node:util";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { PaperBroker, StrikeBroker } from "./broker.ts";
-import { startDashboard } from "./dashboard.ts";
+import { forwardingGuard, startDashboard } from "./dashboard.ts";
 import { Guard } from "./guard.ts";
 import { EXAMPLE_MANDATE, mandateProblems, type Mandate } from "./mandate.ts";
 import { StrikeClient, apiKeyFromHex, type StrikeNetwork } from "./strike.ts";
-import { INSTRUCTIONS, registerTools } from "./tools.ts";
+import { INSTRUCTIONS, registerTools, type AgentGuard } from "./tools.ts";
 
 // stdout carries the MCP protocol; anything else printed there would corrupt it.
 console.log = (...a: unknown[]) => console.error(...a);
@@ -53,18 +53,31 @@ const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `
 );
 
 // The owner's token: resuming after a stop needs it. Kept in the home folder, which the agent can't read through its tools.
-const tokenPath = join(home, "owner-token");
-if (!existsSync(tokenPath)) writeFileSync(tokenPath, randomBytes(18).toString("base64url") + "\n", { mode: 0o600 });
-const ownerToken = readFileSync(tokenPath, "utf8").trim();
+const secret = (name: string) => {
+  const p = join(home, name);
+  if (!existsSync(p)) writeFileSync(p, randomBytes(18).toString("base64url") + "\n", { mode: 0o600 });
+  return readFileSync(p, "utf8").trim();
+};
+const ownerToken = secret("owner-token");
+const agentToken = secret("agent-token");
 const port = Number(v.port ?? process.env.GENDO_STRIKE_PORT ?? 8711);
-startDashboard(guard, port, ownerToken);
-setInterval(() => void guard.watch().catch((e) => console.error(`watch: ${(e as Error).message}`)), 15_000);
 
-console.error(`gendo-strike: ${broker.mode === "strike" ? `Strike ${network} ${client.subAccountId ? `sub-account ${client.subAccountId}` : "account"}` : `paper account at Strike ${network} prices`}; mandate ${mandatePath}`);
-console.error(`owner dashboard: http://127.0.0.1:${port}/?owner=${ownerToken}`);
+// An AI app may start this server several times (one per chat or session). The first copy owns the guard and
+// the dashboard; later copies forward the agent's calls to it, so every window obeys the same rules and stop.
+let agentGuard: AgentGuard = guard;
+try {
+  await startDashboard(guard, port, ownerToken, agentToken);
+  setInterval(() => void guard.watch().catch((e) => console.error(`watch: ${(e as Error).message}`)), 15_000);
+  console.error(`gendo-strike: ${broker.mode === "strike" ? `Strike ${network} ${client.subAccountId ? `sub-account ${client.subAccountId}` : "account"}` : `paper account at Strike ${network} prices`}; mandate ${mandatePath}`);
+  console.error(`owner dashboard: http://127.0.0.1:${port}/?owner=${ownerToken}`);
+} catch (e) {
+  if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+  agentGuard = forwardingGuard(port, agentToken);
+  console.error(`gendo-strike: another copy owns the guard on port ${port}; this one forwards to it`);
+}
 
 if (!v["no-mcp"]) {
   const server = new McpServer({ name: "gendo-strike", version: "0.1.0" }, { instructions: INSTRUCTIONS });
-  registerTools(server, guard, client);
+  registerTools(server, agentGuard, client);
   await server.connect(new StdioServerTransport());
 }
