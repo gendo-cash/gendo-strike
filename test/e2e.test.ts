@@ -34,7 +34,7 @@ describe("gendo-strike over MCP", () => {
     expect((await call("get_price", { symbol: "BTC-USD" })).mark_price).toBeGreaterThan(1_000);
   });
   it("opens a position inside the mandate", async () => {
-    expect(await call("open_position", { symbol: "BTC-USD", side: "long", notional_usd: 200, leverage: 2, reason: "testing the guard" })).toMatchObject({ status: "placed" });
+    expect(await call("open_position", { symbol: "BTC-USD", side: "long", notional_usd: 200, leverage: 2, reason: "testing the guard" })).toMatchObject({ status: "filled" });
     const a = await call("get_account");
     expect(a.positions).toMatchObject([{ symbol: "BTC-USD", side: "long" }]);
     expect(a.room.exposure_left_usd).toBeLessThan(301);

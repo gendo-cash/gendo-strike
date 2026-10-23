@@ -1,6 +1,10 @@
 // Where orders go: Strike itself (live, with the owner's API key), or a paper account that fills at
 // Strike's own mark prices (no key needed: for trying the guard before registering an API wallet).
-import { StrikeClient, type Account, type Position } from "./strike.ts";
+import { randomUUID } from "node:crypto";
+import { StrikeClient, explainCancel, type Account, type Position } from "./strike.ts";
+
+/** What became of an order: filled (fully or partly), or not filled with the reason. */
+export type Fill = { id: string; filled: number; reason?: string };
 
 export interface Broker {
   readonly mode: "strike" | "paper";
@@ -9,7 +13,7 @@ export interface Broker {
   markPrice(symbol: string): Promise<number>;
   market(symbol: string): Promise<{ stepSize: number; minQty: number; minNotional: number } | undefined>;
   /** Market order; `size` in base units. */
-  order(symbol: string, side: "buy" | "sell", size: number, leverage: number, reduceOnly: boolean): Promise<{ id: string }>;
+  order(symbol: string, side: "buy" | "sell", size: number, leverage: number, reduceOnly: boolean): Promise<Fill>;
   cancelAll(): Promise<void>;
 }
 
@@ -28,10 +32,18 @@ export class StrikeBroker implements Broker {
   market(s: string) {
     return this.client.market(s);
   }
-  async order(symbol: string, side: "buy" | "sell", size: number, leverage: number, reduceOnly: boolean) {
+  /** Strike accepts an order as pending and fills or cancels it a moment later: wait for the outcome. */
+  async order(symbol: string, side: "buy" | "sell", size: number, leverage: number, reduceOnly: boolean): Promise<Fill> {
     if (!reduceOnly) await this.client.setLeverage(symbol, Math.floor(leverage));
-    const r = await this.client.placeMarket({ symbol, side, size: String(size), reduceOnly });
-    return { id: String(r.order_id ?? r.ID ?? r.id ?? "") };
+    const cid = randomUUID();
+    await this.client.placeMarket({ symbol, side, size: String(size), reduceOnly, clientOrderId: cid });
+    for (let i = 0; i < 20; i++) {
+      const s = await this.client.orderState(symbol, cid);
+      if (s && (s.status === "filled" || s.status === "canceled" || s.status === "cancelled" || s.status === "rejected" || s.status === "expired"))
+        return { id: s.id || cid, filled: s.filled, ...(s.filled < s.size ? { reason: explainCancel(s.reason) } : {}) };
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return { id: cid, filled: 0, reason: "Strike hasn't confirmed the order yet; check get_account before retrying" };
   }
   async cancelAll() {
     await this.client.cancelAll();
@@ -79,7 +91,7 @@ export class PaperBroker implements Broker {
     else if (cur.size === 0 || Math.sign(next) !== Math.sign(cur.size)) this.book.set(symbol, { size: next, entry: mark, leverage });
     else if (Math.abs(next) > Math.abs(cur.size)) this.book.set(symbol, { size: next, entry: (cur.entry * cur.size + mark * signed) / next, leverage });
     else this.book.set(symbol, { ...cur, size: next });
-    return { id: `paper-${++this.n}` };
+    return { id: `paper-${++this.n}`, filled: size };
   }
   async cancelAll() {}
 }

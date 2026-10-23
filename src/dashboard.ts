@@ -62,7 +62,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 .btn.stop{background:var(--red);border-color:var(--red);color:var(--ink)}.btn.ghost{background:none;color:var(--paper)}.btn[disabled]{opacity:.4;cursor:default}
 .j{display:grid;grid-template-columns:100px 86px 1fr;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}
 .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-radius:5px;padding:2px 6px;justify-self:start;border:1px solid var(--line)}
-.k.order{color:var(--green);border-color:#3c5a2e}.k.close{color:var(--soft)}.k.refused{color:var(--red);border-color:#4a2a24}.k.stop{background:var(--red);color:var(--ink);border-color:var(--red)}.k.resume{color:var(--paper)}.k.error{color:#e0a52b}
+.k.order{color:var(--green);border-color:#3c5a2e}.k.close{color:var(--soft)}.k.refused{color:var(--red);border-color:#4a2a24}.k.stop{background:var(--red);color:var(--ink);border-color:var(--red)}.k.resume{color:var(--paper)}.k.error,.k.unfilled{color:#e0a52b;border-color:#4a3a1e}
 .why{color:var(--soft);font-style:italic}.empty{color:var(--mute);padding:14px}
 .banner{grid-column:1/-1;border:1px solid var(--red);background:#2a1410;border-radius:10px;padding:12px 14px;display:none}
 @media (max-width:600px){.j{grid-template-columns:1fr}}
@@ -114,7 +114,7 @@ function render(s) {
   $("journal").innerHTML = s.journal.length ? s.journal.map((e) => {
     const what = e.kind === "order" ? (e.side === "buy" ? "Long " : "Short ") + esc(e.symbol) + " " + usd(e.notionalUsd) + " at " + e.leverage + "×"
       : e.kind === "refused" ? "Refused " + (e.side === "buy" ? "long " : "short ") + esc(e.symbol) + " " + usd(e.notionalUsd || 0) + " at " + e.leverage + "× · <b>" + esc(e.code) + "</b>: " + esc(e.detail)
-      : e.kind === "close" ? "Closed " + esc(e.symbol) : e.kind === "stop" ? "Stopped: " + esc(e.detail) : e.kind === "resume" ? "Resumed by the owner" : "Error: " + esc(e.detail);
+      : e.kind === "unfilled" ? "Not filled: " + (e.side ? (e.side === "buy" ? "long " : "short ") : "close ") + esc(e.symbol) + " · " + esc(e.detail) : e.kind === "close" ? "Closed " + esc(e.symbol) : e.kind === "stop" ? "Stopped: " + esc(e.detail) : e.kind === "resume" ? "Resumed by the owner" : "Error: " + esc(e.detail);
     return '<div class="j"><span class="mono" style="color:var(--mute)">' + t(e.at) + '</span><span class="k ' + e.kind + '">' + e.kind + "</span><span>" + what + (e.reason ? '<div class="why">“' + esc(e.reason) + '”</div>' : "") + "</span></div>";
   }).join("") : '<div class="empty">Nothing yet. Decisions appear here as the agent trades.</div>';
   $("updated").textContent = "updated " + t(Date.now());

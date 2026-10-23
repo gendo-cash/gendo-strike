@@ -66,15 +66,16 @@ export function check(m: Mandate, book: Book, i: Intent, market: { mark: number;
   const after = cur + signed;
   const reduces = cur !== 0 && Math.sign(signed) !== Math.sign(cur) && Math.abs(signed) <= Math.abs(cur);
   if (!(i.notionalUsd > 0)) return { ok: false, code: "SIZE", reason: "the order needs a size above 0 USD" };
-  // A stop is the first thing an agent should hear about, before any sizing detail.
-  if (!reduces && book.locked) return { ok: false, code: "LOCKED", reason: `trading is stopped: ${book.locked}. Only closing or reducing positions is allowed.` };
-  if (size < market.minQty || size * market.mark < market.minNotional)
-    return { ok: false, code: "TOO_SMALL", reason: `below Strike's minimum for ${i.symbol} (${market.minQty} units and ${market.minNotional} USD)` };
-  if (reduces) return { ok: true, size };
+  const tooSmall = size < market.minQty || size * market.mark < market.minNotional;
+  const small: Verdict = { ok: false, code: "TOO_SMALL", reason: `below Strike's minimum for ${i.symbol} (${market.minQty} units and ${market.minNotional} USD)` };
+  if (reduces) return tooSmall ? small : { ok: true, size };
 
+  // The owner's rules come first: the agent should learn which rule it broke before any sizing detail.
+  if (book.locked) return { ok: false, code: "LOCKED", reason: `trading is stopped: ${book.locked}. Only closing or reducing positions is allowed.` };
   if (!m.markets.includes(i.symbol)) return { ok: false, code: "MARKET", reason: `${i.symbol} isn't in the mandate. Allowed: ${m.markets.join(", ")}` };
   if (!(i.leverage >= 1) || i.leverage > m.maxLeverage)
     return { ok: false, code: "LEVERAGE", reason: `leverage ${i.leverage}x is outside the mandate (1x to ${m.maxLeverage}x)` };
+  if (tooSmall) return small;
   const posAfter = notional(after, market.mark);
   if (posAfter > m.maxPositionUsd)
     return { ok: false, code: "POSITION", reason: `the ${i.symbol} position would be ${posAfter.toFixed(2)} USD; the mandate allows ${m.maxPositionUsd} USD per market` };

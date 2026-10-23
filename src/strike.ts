@@ -132,4 +132,29 @@ export class StrikeClient {
   cancelAll() {
     return this.call("DELETE", "/v2/order/cancel-all", {});
   }
+
+  /** An order's current state, by the id we gave it. Strike answers both snake_case and PascalCase. */
+  async orderState(symbol: string, clientOrderId: string): Promise<OrderState | undefined> {
+    const o = await this.call<Record<string, unknown>>("GET", `/v2/order?symbol=${encodeURIComponent(symbol)}&client_order_id=${encodeURIComponent(clientOrderId)}`).catch((e) => {
+      if (e instanceof StrikeError && e.status === 404) return undefined;
+      throw e;
+    });
+    if (!o) return undefined;
+    const pick = (...k: string[]) => k.map((x) => o[x]).find((x) => x !== undefined && x !== null && x !== "");
+    return {
+      id: String(pick("id", "ID") ?? ""),
+      status: String(pick("status", "Status") ?? "").toLowerCase(),
+      filled: num(pick("filled", "Filled")),
+      size: num(pick("size", "Size")),
+      reason: (pick("error_message", "close_reason", "CloseReason") as string | undefined) ?? undefined,
+    };
+  }
+}
+
+export type OrderState = { id: string; status: string; filled: number; size: number; reason?: string };
+
+/** Strike's cancel reasons, in words an agent can act on. */
+export function explainCancel(reason?: string): string {
+  if (reason === "market_order_exceeded_slippage") return "nobody on Strike's order book is trading near the price right now (too little liquidity): nothing was filled";
+  return reason ? `Strike cancelled it: ${reason}` : "Strike cancelled it without filling";
 }

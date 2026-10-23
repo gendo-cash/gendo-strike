@@ -56,7 +56,7 @@ The agent's tools:
 | `get_mandate` | The owner's rules, and whether trading is stopped |
 | `get_account` | Equity, today's PnL, positions with unrealized PnL, and the room left: per market, in total, and before the loss stop |
 | `get_price` | Strike's mark price for a market |
-| `open_position` | Market order sized in USD notional, with a required reason. Placed, or refused with a code and a sentence |
+| `open_position` | Market order sized in USD notional, with a required reason. Waits for Strike's fill: `filled`, `partially_filled`, `not_filled` (with Strike's reason, e.g. no liquidity), or `refused` by the mandate with a code and a sentence |
 | `close_position` | Close a whole position. Always works |
 
 There is no tool to change the mandate, resume trading, deposit or withdraw.
@@ -109,7 +109,9 @@ The guard prints the dashboard link (`http://127.0.0.1:8711/?owner=...`) to its 
 | `test/guard.test.ts` | Orders journaled with reasons; refusals place nothing; the daily loss stop closes everything and locks; the owner's stop and resume; a stop survives a restart; two simultaneous orders can't both pass a check meant for one |
 | `test/e2e.test.ts` | An MCP client starts the guard like an AI app does, trades on Strike testnet prices, gets refused, and the dashboard's stop and owner-only resume work |
 
-Tested so far: everything above, in paper mode against Strike testnet's live prices. Not yet: placing orders on a live Strike account (it needs a testnet API wallet).
+`scripts/live-smoke.mjs` runs the same flow on a **real Strike testnet account** (with `STRIKE_API_KEY` set): a 15 USD ETH long at 2x filled on Strike and showed up as a position; adding past the per-market cap, 10x leverage and a market outside the mandate were refused; an ADA order Strike cancelled for lack of liquidity came back as `not_filled` with that reason; the position closed. All passed on Strike testnet on 23 October 2026.
+
+Not tested yet: mainnet, Strike sub-accounts, and the daily loss stop on a live account (it's tested on the paper account, which uses the same code path).
 
 ## Roadmap
 

@@ -8,7 +8,7 @@ import { check, lossBreached, type Book, type Mandate } from "./mandate.ts";
 
 export type Entry = {
   at: number;
-  kind: "order" | "close" | "refused" | "stop" | "resume" | "error";
+  kind: "order" | "close" | "refused" | "unfilled" | "stop" | "resume" | "error";
   symbol?: string;
   side?: "buy" | "sell";
   notionalUsd?: number;
@@ -94,8 +94,12 @@ export class Guard {
       try {
         const r = await this.broker.order(i.symbol, i.side, v.size, i.leverage, reduces && v.size <= Math.abs(cur));
         if (!reduces) this.recentOrdersMs = [...this.recentOrdersMs.filter((t) => this.now() - t < 60_000), this.now()];
-        this.log({ kind: "order", symbol: i.symbol, side: i.side, notionalUsd: i.notionalUsd, leverage: i.leverage, size: v.size, detail: r.id, reason: i.reason });
-        return { status: "placed", order_id: r.id, symbol: i.symbol, side: i.side, size: v.size, mark_price: mark };
+        if (r.filled === 0) {
+          this.log({ kind: "unfilled", symbol: i.symbol, side: i.side, notionalUsd: i.notionalUsd, leverage: i.leverage, size: v.size, detail: r.reason, reason: i.reason });
+          return { status: "not_filled", symbol: i.symbol, message: r.reason, next: "Nothing changed. Try a smaller size, another market, or later." };
+        }
+        this.log({ kind: "order", symbol: i.symbol, side: i.side, notionalUsd: i.notionalUsd, leverage: i.leverage, size: r.filled, detail: r.id, reason: i.reason });
+        return { status: r.filled < v.size ? "partially_filled" : "filled", order_id: r.id, symbol: i.symbol, side: i.side, size: r.filled, mark_price: mark, ...(r.reason ? { note: r.reason } : {}) };
       } catch (e) {
         this.log({ kind: "error", symbol: i.symbol, detail: (e as Error).message, reason: i.reason });
         return { status: "error", message: `Strike refused the order: ${(e as Error).message}` };
@@ -119,8 +123,12 @@ export class Guard {
     if (!p) return { status: "no_position", symbol };
     try {
       const r = await this.broker.order(symbol, p.size > 0 ? "sell" : "buy", Math.abs(p.size), p.leverage, true);
-      this.log({ kind: "close", symbol, size: Math.abs(p.size), detail: r.id, reason });
-      return { status: "closed", symbol, size: Math.abs(p.size), order_id: r.id };
+      if (r.filled === 0) {
+        this.log({ kind: "unfilled", symbol, size: Math.abs(p.size), detail: r.reason, reason });
+        return { status: "not_filled", symbol, message: r.reason, next: "The position is still open. Try again in a moment." };
+      }
+      this.log({ kind: "close", symbol, size: r.filled, detail: r.id, reason });
+      return { status: r.filled < Math.abs(p.size) ? "partially_closed" : "closed", symbol, size: r.filled, order_id: r.id };
     } catch (e) {
       this.log({ kind: "error", symbol, detail: (e as Error).message, reason });
       return { status: "error", message: `Strike refused the close: ${(e as Error).message}` };
