@@ -46,7 +46,9 @@ describe("gendo-strike over MCP", () => {
   it("the dashboard shows the journal; stop closes everything; only the owner's token resumes", async () => {
     const s = await (await dash("/api/state")).json();
     expect(s.journal.map((e: { kind: string }) => e.kind)).toEqual(["refused", "refused", "order"]);
-    expect((await dash("/", {})).status).toBe(200);
+    const page = await (await dash("/", {})).text();
+    // The page's script must parse: a stray quote would blank the whole dashboard.
+    expect(() => new Function(page.match(/<script>([\s\S]*)<\/script>/)![1]!)).not.toThrow();
     await dash("/api/stop", { method: "POST" });
     expect((await call("get_account")).positions).toEqual([]);
     expect(await call("open_position", { symbol: "BTC-USD", side: "long", notional_usd: 50, leverage: 1, reason: "after stop" })).toMatchObject({ code: "LOCKED" });
@@ -55,5 +57,18 @@ describe("gendo-strike over MCP", () => {
     const token = readFileSync(join(home, "owner-token"), "utf8").trim();
     expect((await dash("/api/resume", { method: "POST", headers: { "x-owner-token": token } })).status).toBe(200);
     expect((await call("get_mandate")).trading).toBe("open");
+  });
+  it("only the owner edits the mandate from the dashboard; the agent sees the change at once", async () => {
+    const token = readFileSync(join(home, "owner-token"), "utf8").trim();
+    const next = { markets: ["BTC-USD", "ETH-USD", "SOL-USD"], maxLeverage: 2, maxPositionUsd: 250, maxExposureUsd: 400, maxDailyLossUsd: 40, maxOrdersPerMinute: 5 };
+    const post = (body: unknown, t?: string) => dash("/api/mandate", { method: "POST", headers: { "content-type": "application/json", ...(t ? { "x-owner-token": t } : {}) }, body: JSON.stringify(body) });
+    expect((await post(next)).status).toBe(403);
+    const bad = await post({ ...next, maxPositionUsd: 900 }, token);
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).problems).toEqual(["maxPositionUsd can't be above maxExposureUsd"]);
+    expect((await post(next, token)).status).toBe(200);
+    expect((await call("get_mandate")).mandate).toEqual(next);
+    expect(JSON.parse(readFileSync(join(home, "mandate.json"), "utf8"))).toEqual(next);
+    expect((await (await dash("/api/markets")).json()).markets).toContain("BTC-USD");
   });
 });

@@ -18,7 +18,7 @@ AI agents can already trade. What stops people from letting them is that today y
 | The agent reads or leaks the key | The guard holds the key; the agent only sees tools (`open_position`, `close_position`...) | The agent's process never has it |
 | Wrong markets, too much leverage, positions too big | The mandate, checked before every order | Enforced by the guard |
 | A losing day spirals | The daily loss stop: close everything, refuse new trades until the owner resumes; survives a restart | Enforced by the guard, checked before every order and every 15 s |
-| The agent unlocks itself | Anyone at the dashboard can press Stop; only the owner's token resumes, so an agent with a web-fetch tool can't | Enforced by the guard |
+| The agent unlocks itself or loosens its rules | Anyone at the dashboard can press Stop; only the owner's link resumes trading or edits the mandate, so an agent with a web-fetch tool can't | Enforced by the guard |
 | Reducing risk gets blocked | Closing or shrinking a position is always allowed, even when stopped or over a limit | By design |
 
 The guard is off-chain software: it's as trustworthy as the machine it runs on. What it never needs is withdrawal rights, because Strike never gives them to an API key. The next step (see [Roadmap](#roadmap)) puts the capital limit on-chain with Gendo's Cardano vault.
@@ -94,7 +94,7 @@ node scripts/demo-agent.mjs                # or: a scripted agent that trades an
 ```
 Claude Code: `claude mcp add strike --env STRIKE_API_KEY=<key> -- /path/to/gendo-strike/bin/gendo-strike`
 
-The guard prints the dashboard link (`http://127.0.0.1:8711/?owner=...`) to its log, and keeps it in `~/.gendo-strike/owner-token`. Your mandate lives in `~/.gendo-strike/mandate.json`:
+The guard prints the dashboard link (`http://127.0.0.1:8711/?owner=...`) to its log, and keeps the token in `~/.gendo-strike/owner-token`. Open that link to see everything and to **edit the mandate** (markets as toggles, the limits as numbers); a change applies to the agent's next order, is checked before it's saved, and shows in the journal. Without the owner link the page is read-only: anyone there can press Stop, nobody can loosen the rules or resume. The mandate is saved in `~/.gendo-strike/mandate.json`:
 ```json
 { "markets": ["BTC-USD", "ETH-USD", "ADA-USD", "SOL-USD"], "maxLeverage": 5, "maxPositionUsd": 500,
   "maxExposureUsd": 1000, "maxDailyLossUsd": 100, "maxOrdersPerMinute": 6 }
@@ -107,7 +107,7 @@ The guard prints the dashboard link (`http://127.0.0.1:8711/?owner=...`) to its 
 | `test/mandate.test.ts` | Every rule: markets, leverage, per-market and total exposure (a flip from long to short counts the new short), rate, Strike's minimums, sizing never rounds up, a stop is reported first, closing always allowed |
 | `test/strike.test.ts` | Request signing matches Strike's format, checked against the RFC 8032 Ed25519 test vector |
 | `test/guard.test.ts` | Orders journaled with reasons; refusals place nothing; the daily loss stop closes everything and locks; the owner's stop and resume; a stop survives a restart; two simultaneous orders can't both pass a check meant for one |
-| `test/e2e.test.ts` | An MCP client starts the guard like an AI app does, trades on Strike testnet prices, gets refused, and the dashboard's stop and owner-only resume work |
+| `test/e2e.test.ts` | An MCP client starts the guard like an AI app does, trades on Strike testnet prices, gets refused; the dashboard's stop, owner-only resume and owner-only mandate edits work, and the agent sees an edit at once |
 
 `scripts/live-smoke.mjs` runs the same flow on a **real Strike testnet account** (with `STRIKE_API_KEY` set): a 15 USD ETH long at 2x filled on Strike and showed up as a position; adding past the per-market cap, 10x leverage and a market outside the mandate were refused; an ADA order Strike cancelled for lack of liquidity came back as `not_filled` with that reason; the position closed. All passed on Strike testnet on 23 October 2026.
 
@@ -118,7 +118,7 @@ Not tested yet: mainnet, Strike sub-accounts, and the daily loss stop on a live 
 - **Capital caps on-chain, with Gendo's Cardano vault.** Owners keep funds in a Gendo vault and give the agent an allowance whose only destination is a deposit into Strike, capped per period. The chain then bounds how much capital an agent can ever put at risk, whatever the guard or the agent does. Gendo's vault, allowance and adapter system already exist on preprod ([gendo.cash](https://gendo.cash)); the missing piece is a Strike deposit adapter.
 - **One Strike sub-account per agent**, so each agent's margin and PnL are isolated.
 - **Builder codes**: the guard as a Strike builder, earning a fee share on the agents' volume.
-- **Mandates set in the Gendo app**, with multi-owner approval, and the stop button on a phone.
+- **Mandates approved by several owners** in the Gendo app, and the stop button on a phone.
 - **Copy-trading guard**: the same mandate wrapped around Strike copy trading.
 
 ## Limits

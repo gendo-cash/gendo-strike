@@ -4,11 +4,11 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Broker } from "./broker.ts";
-import { check, lossBreached, type Book, type Mandate } from "./mandate.ts";
+import { check, lossBreached, mandateProblems, type Book, type Mandate } from "./mandate.ts";
 
 export type Entry = {
   at: number;
-  kind: "order" | "close" | "refused" | "unfilled" | "stop" | "resume" | "error";
+  kind: "order" | "close" | "refused" | "unfilled" | "stop" | "resume" | "mandate" | "error";
   symbol?: string;
   side?: "buy" | "sell";
   notionalUsd?: number;
@@ -43,9 +43,11 @@ export class Guard {
 
   constructor(
     readonly broker: Broker,
-    readonly mandate: Mandate,
+    private current: Mandate,
     private readonly journalPath?: string,
     private readonly now = () => Date.now(),
+    /** Where an owner's change is kept (the mandate file). */
+    private readonly save?: (m: Mandate) => void,
   ) {
     if (journalPath && existsSync(journalPath))
       this.journal = readFileSync(journalPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Entry).slice(-500);
@@ -63,6 +65,30 @@ export class Guard {
       appendFileSync(this.journalPath, JSON.stringify(full) + "\n");
     }
     return full;
+  }
+
+  get mandate(): Mandate {
+    return this.current;
+  }
+
+  /** The owner changes the rules. Applies to the next order; open positions stay open. */
+  setMandate(next: Mandate): { ok: true } | { ok: false; problems: string[] } {
+    const problems = mandateProblems(next);
+    if (problems.length) return { ok: false, problems };
+    const before = this.current;
+    const usd = (n: number) => `${n} USD`;
+    const diff = [
+      before.markets.join() !== next.markets.join() ? `markets ${before.markets.join(", ")} → ${next.markets.join(", ")}` : "",
+      before.maxLeverage !== next.maxLeverage ? `max leverage ${before.maxLeverage}× → ${next.maxLeverage}×` : "",
+      before.maxPositionUsd !== next.maxPositionUsd ? `max per market ${usd(before.maxPositionUsd)} → ${usd(next.maxPositionUsd)}` : "",
+      before.maxExposureUsd !== next.maxExposureUsd ? `max exposure ${usd(before.maxExposureUsd)} → ${usd(next.maxExposureUsd)}` : "",
+      before.maxDailyLossUsd !== next.maxDailyLossUsd ? `daily loss stop ${usd(before.maxDailyLossUsd)} → ${usd(next.maxDailyLossUsd)}` : "",
+      before.maxOrdersPerMinute !== next.maxOrdersPerMinute ? `orders per minute ${before.maxOrdersPerMinute} → ${next.maxOrdersPerMinute}` : "",
+    ].filter(Boolean);
+    this.current = { ...next, markets: [...next.markets] };
+    this.save?.(this.current);
+    if (diff.length) this.log({ kind: "mandate", detail: diff.join("; ") });
+    return { ok: true };
   }
 
   /** One order at a time: two concurrent orders can't both pass a check meant for one. */

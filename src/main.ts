@@ -41,7 +41,9 @@ if (network !== "testnet" && network !== "mainnet") throw new Error("--network i
 const keyHex = process.env.STRIKE_API_KEY?.trim();
 const client = new StrikeClient(network, keyHex ? apiKeyFromHex(keyHex) : undefined);
 const broker = keyHex ? new StrikeBroker(client) : new PaperBroker(client, Number(process.env.PAPER_USD ?? 1000));
-const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `journal-${network}.jsonl` : "journal-paper.jsonl"));
+const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `journal-${network}.jsonl` : "journal-paper.jsonl"), Date.now, (m) =>
+  writeFileSync(mandatePath, JSON.stringify(m, null, 2) + "\n"),
+);
 
 // The owner's token: resuming after a stop needs it. Kept in the home folder, which the agent can't read through its tools.
 const tokenPath = join(home, "owner-token");

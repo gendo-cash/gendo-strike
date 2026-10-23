@@ -70,3 +70,20 @@ describe("the guard", () => {
     expect(await guard.close("BTC-USD", "flatten")).toMatchObject({ status: "closed" });
   });
 });
+
+describe("the owner changes the mandate", () => {
+  it("a valid change applies to the next order, is journaled, and is saved", async () => {
+    const saved: Mandate[] = [];
+    const broker = new PaperBroker(feed({ "BTC-USD": 80_000 }), 1_000);
+    const guard = new Guard(broker, m, undefined, Date.now, (x) => saved.push(x));
+    expect(guard.setMandate({ ...m, maxLeverage: 2 })).toEqual({ ok: true });
+    expect(await guard.trade({ symbol: "BTC-USD", side: "buy", notionalUsd: 100, leverage: 3, reason: "3x" })).toMatchObject({ code: "LEVERAGE" });
+    expect(saved).toEqual([{ ...m, maxLeverage: 2 }]);
+    expect((await guard.snapshot()).journal.find((e) => e.kind === "mandate")?.detail).toBe("max leverage 5× → 2×");
+  });
+  it("an invalid change is refused and nothing changes", async () => {
+    const { guard } = setup({ "BTC-USD": 80_000 });
+    expect(guard.setMandate({ ...m, maxPositionUsd: 5_000 })).toEqual({ ok: false, problems: ["maxPositionUsd can't be above maxExposureUsd"] });
+    expect(guard.mandate).toEqual(m);
+  });
+});
