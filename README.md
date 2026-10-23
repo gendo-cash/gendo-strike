@@ -31,17 +31,17 @@ sequenceDiagram
   participant G as Gendo Guard (holds the API key)
   participant S as Strike V2 API
   participant O as You (dashboard)
-  AI->>G: open_position BTC-USD long $300 at 3x, "reason"
+  AI->>G: open_position BTC-USD long 300 USD at 3x, with a reason
   G->>S: GET exchangeInfo, markPrice, account, positions
-  G->>G: inside the mandate? (market, leverage, position, exposure, rate, daily loss)
+  G->>G: check the mandate: market, leverage, position, exposure, rate, daily loss
   alt inside
     G->>S: POST /v2/leverage, POST /v2/order (market, signed with the API wallet)
-    G-->>AI: placed
+    G-->>AI: filled, once Strike confirms the fill
   else outside
-    G-->>AI: refused: POSITION, "the BTC-USD position would be 699 USD; the mandate allows 500"
+    G-->>AI: refused, POSITION: the position would be 699 USD, the cap is 500 USD
   end
   G-->>O: every decision, with the agent's reason
-  O->>G: Stop: cancel all, close every position, lock
+  O->>G: Stop: cancel all, close every position, then lock
 ```
 
 Strike endpoints used, all through Strike's Ed25519 API-wallet signing (`{METHOD}:{PATH}:{TIMESTAMP}:{NONCE}:{SHA256(body)}`):
