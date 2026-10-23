@@ -61,6 +61,6 @@ console.error(`owner dashboard: http://127.0.0.1:${port}/?owner=${ownerToken}`);
 
 if (!v["no-mcp"]) {
   const server = new McpServer({ name: "gendo-strike", version: "0.1.0" }, { instructions: INSTRUCTIONS });
-  registerTools(server, guard);
+  registerTools(server, guard, client);
   await server.connect(new StdioServerTransport());
 }

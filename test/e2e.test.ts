@@ -27,11 +27,17 @@ afterAll(async () => client?.close());
 describe("gendo-strike over MCP", () => {
   it("offers the agent trading tools and nothing that changes the rules", async () => {
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(["close_position", "get_account", "get_mandate", "get_price", "open_position"]);
+    expect(names).toEqual(["close_position", "get_account", "get_candles", "get_mandate", "get_market", "open_position"]);
   });
-  it("reads the mandate and a live Strike testnet price", async () => {
+  it("reads the mandate, and Strike testnet market data: price, funding, open interest, the book, candles", async () => {
     expect(await call("get_mandate")).toMatchObject({ mandate: { maxLeverage: 3 }, trading: "open" });
-    expect((await call("get_price", { symbol: "BTC-USD" })).mark_price).toBeGreaterThan(1_000);
+    const mk = await call("get_market", { symbol: "ETH-USD" });
+    expect(mk.mark_price).toBeGreaterThan(100);
+    expect(typeof mk.funding_rate_pct).toBe("number");
+    expect(mk.book).toHaveProperty("spread_pct");
+    const c = await call("get_candles", { symbol: "ETH-USD", interval: "1h", limit: 5 });
+    expect(c.candles.length).toBeGreaterThan(0);
+    expect(c.candles[0]).toEqual(expect.objectContaining({ o: expect.any(Number), c: expect.any(Number) }));
   });
   it("opens a position inside the mandate", async () => {
     expect(await call("open_position", { symbol: "BTC-USD", side: "long", notional_usd: 200, leverage: 2, reason: "testing the guard" })).toMatchObject({ status: "filled" });

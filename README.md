@@ -2,7 +2,7 @@
 
 **Let an AI agent trade Strike perpetuals without handing it the keys, or your whole account.**
 
-You set a mandate (which markets, the maximum leverage, the largest position, the largest total exposure, a daily loss stop). Your AI (Claude Desktop, Claude Code, Cursor, or any MCP app) gets trading tools for Strike. Every order it asks for is checked against your mandate before it reaches Strike. If the day's loss hits your limit, the guard closes everything and stops new trades until you resume. You watch it all, with the agent's own reason for every trade, on a local dashboard with a stop button.
+You set a mandate (which markets, the maximum leverage, the largest position, the largest total exposure, a daily loss stop). Your AI (Claude Desktop, Claude Code, Cursor, or any MCP app) gets Strike's market data (price, funding, open interest, order book, candles) to form its own strategy, and trading tools to act on it. Every order it asks for is checked against your mandate before it reaches Strike. If the day's loss hits your limit, the guard closes everything and stops new trades until you resume. You watch it all, with the agent's own reason for every trade, on a local dashboard with a stop button.
 
 Built on [Gendo](https://gendo.cash), budgeted on-chain accounts for AI agents on Cardano, for the Strike Hackathon (October 2026).
 
@@ -45,7 +45,7 @@ sequenceDiagram
 ```
 
 Strike endpoints used, all through Strike's Ed25519 API-wallet signing (`{METHOD}:{PATH}:{TIMESTAMP}:{NONCE}:{SHA256(body)}`):
-- market data: `GET /price/v2/exchangeInfo` (markets, lot sizes, minimums), `GET /price/v2/markPrice`;
+- market data: `GET /price/v2/exchangeInfo` (markets, lot sizes, minimums), `markPrice`, `premiumIndex` (funding), `openInterest`, `depth`, `klines`;
 - account: `GET /v2/account` (equity for the daily loss stop), `GET /v2/positions`;
 - trading: `POST /v2/leverage`, `POST /v2/order` (market orders, `reduce_only` for closes), `DELETE /v2/order/cancel-all`.
 
@@ -55,7 +55,8 @@ The agent's tools:
 |---|---|
 | `get_mandate` | The owner's rules, and whether trading is stopped |
 | `get_account` | Equity, today's PnL, positions with unrealized PnL, and the room left: per market, in total, and before the loss stop |
-| `get_price` | Strike's mark price for a market |
+| `get_market` | One market now: mark and index price, funding rate and next funding time, open interest, and the order book's spread and USD depth within 1% |
+| `get_candles` | Price history (1m to 1d candles) |
 | `open_position` | Market order sized in USD notional, with a required reason. Waits for Strike's fill: `filled`, `partially_filled`, `not_filled` (with Strike's reason, e.g. no liquidity), or `refused` by the mandate with a code and a sentence |
 | `close_position` | Close a whole position. Always works |
 

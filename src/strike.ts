@@ -32,6 +32,7 @@ export function signedHeaders(k: { key: KeyObject; publicHex: string }, method: 
   };
 }
 
+export type Candle = { openTime: number; open: number; high: number; low: number; close: number; volume: number };
 export type Market = { symbol: string; minQty: number; stepSize: number; maxQty: number; minNotional: number };
 export type Position = { symbol: string; size: number; entryPrice: number; leverage: number; upnl: number; liquidationPrice: number };
 export type Account = { walletBalance: number; marginBalance: number; availableBalance: number; unrealizedPnl: number };
@@ -101,6 +102,29 @@ export class StrikeClient {
     const v = num(p.p ?? p.markPrice);
     if (!(v > 0)) throw new StrikeError(0, `no mark price for ${symbol}`);
     return v;
+  }
+
+  /** Candles, oldest first. Interval as Strike names them: 1m, 5m, 15m, 1h, 4h, 1d... */
+  async candles(symbol: string, interval: string, limit: number): Promise<Candle[]> {
+    const q = `symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${Math.min(Math.max(1, Math.floor(limit)), 500)}`;
+    const rows = await this.call<unknown[][]>("GET", `/price/v2/klines?${q}`, undefined, false);
+    return rows.map((r) => ({ openTime: num(r[0]), open: num(r[1]), high: num(r[2]), low: num(r[3]), close: num(r[4]), volume: num(r[5]) }));
+  }
+
+  /** Funding: the rate longs pay shorts (negative: shorts pay longs) at the next funding time. */
+  async funding(symbol: string): Promise<{ markPrice: number; indexPrice: number; fundingRate: number; nextFundingTime: number }> {
+    const f = await this.call<Record<string, unknown>>("GET", `/price/v2/premiumIndex?symbol=${encodeURIComponent(symbol)}`, undefined, false);
+    return { markPrice: num(f.markPrice), indexPrice: num(f.indexPrice), fundingRate: num(f.fundingRate), nextFundingTime: num(f.nextFundingTime) };
+  }
+
+  async openInterest(symbol: string): Promise<number> {
+    return num((await this.call<Record<string, unknown>>("GET", `/price/v2/openInterest?symbol=${encodeURIComponent(symbol)}`, undefined, false)).openInterest);
+  }
+
+  async book(symbol: string, limit = 20): Promise<{ bids: [number, number][]; asks: [number, number][] }> {
+    const d = await this.call<{ bids?: string[][]; asks?: string[][] }>("GET", `/price/v2/depth?symbol=${encodeURIComponent(symbol)}&limit=${limit}`, undefined, false);
+    const side = (x?: string[][]) => (x ?? []).map((l) => [num(l[0]), num(l[1])] as [number, number]);
+    return { bids: side(d.bids), asks: side(d.asks) };
   }
 
   // --- the account behind the API key ----------------------------------------

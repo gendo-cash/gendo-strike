@@ -66,3 +66,17 @@ describe("the order of refusals", () => {
     expect(check(m, { ...empty, locked: "stopped by the owner" }, { symbol: "BTC-USD", side: "buy", notionalUsd: 10, leverage: 1 }, tiny, now)).toMatchObject({ code: "LOCKED" });
   });
 });
+
+describe("reading the order book", () => {
+  it("spread and the USD resting within 1% of mid", async () => {
+    const { liquidity } = await import("../src/mandate.ts");
+    const l = liquidity({ bids: [[99, 2], [97, 10]], asks: [[101, 1], [103, 5]] });
+    expect(l.spreadPct).toBeCloseTo(2, 5);
+    expect(l.bidUsdWithin1Pct).toBe(198); // 97 is more than 1% below mid (100)
+    expect(l.askUsdWithin1Pct).toBe(101);
+  });
+  it("an empty side means market orders won't fill", async () => {
+    const { liquidity } = await import("../src/mandate.ts");
+    expect(liquidity({ bids: [], asks: [[100, 2]] })).toMatchObject({ spreadPct: null, note: expect.stringMatching(/won't fill/) });
+  });
+});

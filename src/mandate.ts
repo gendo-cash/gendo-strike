@@ -91,3 +91,16 @@ export function check(m: Mandate, book: Book, i: Intent, market: { mark: number;
 export function lossBreached(m: Mandate, startEquity: number, equity: number): boolean {
   return startEquity - equity >= m.maxDailyLossUsd;
 }
+
+/** What the order book offers near the price: the spread, and how much USD rests within 1% of mid on each side. */
+export function liquidity(book: { bids: [number, number][]; asks: [number, number][] }) {
+  const bid = book.bids[0]?.[0], ask = book.asks[0]?.[0];
+  if (bid === undefined || ask === undefined) return { spreadPct: null, bidUsdWithin1Pct: 0, askUsdWithin1Pct: 0, note: "one side of the book is empty: market orders won't fill" };
+  const mid = (bid + ask) / 2;
+  const within = (side: [number, number][], ok: (p: number) => boolean) => side.filter(([p]) => ok(p)).reduce((s, [p, q]) => s + p * q, 0);
+  return {
+    spreadPct: ((ask - bid) / mid) * 100,
+    bidUsdWithin1Pct: within(book.bids, (p) => p >= mid * 0.99),
+    askUsdWithin1Pct: within(book.asks, (p) => p <= mid * 1.01),
+  };
+}
