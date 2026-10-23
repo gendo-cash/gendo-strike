@@ -42,7 +42,11 @@ if (network !== "testnet" && network !== "mainnet") throw new Error("--network i
 // The key file keeps the secret out of the AI app's own config, which the app (and its logs) can read.
 const keyFile = join(home, "api-key");
 const keyHex = process.env.STRIKE_API_KEY?.trim() || (existsSync(keyFile) ? readFileSync(keyFile, "utf8").trim() : "");
-const client = new StrikeClient(network, keyHex ? apiKeyFromHex(keyHex) : undefined);
+// Optional: a Strike sub-account just for the agent (create it in Strike's app and move funds in). Then the most
+// the agent can ever lose is what's in it: Strike keeps the rest of the account out of its reach.
+const subFile = join(home, "sub-account");
+const subAccount = process.env.STRIKE_SUB_ACCOUNT?.trim() || (existsSync(subFile) ? readFileSync(subFile, "utf8").trim() : "") || undefined;
+const client = new StrikeClient(network, keyHex ? apiKeyFromHex(keyHex) : undefined, keyHex ? subAccount : undefined);
 const broker = keyHex ? new StrikeBroker(client) : new PaperBroker(client, Number(process.env.PAPER_USD ?? 1000));
 const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `journal-${network}.jsonl` : "journal-paper.jsonl"), Date.now, (m) =>
   writeFileSync(mandatePath, JSON.stringify(m, null, 2) + "\n"),
@@ -56,7 +60,7 @@ const port = Number(v.port ?? process.env.GENDO_STRIKE_PORT ?? 8711);
 startDashboard(guard, port, ownerToken);
 setInterval(() => void guard.watch().catch((e) => console.error(`watch: ${(e as Error).message}`)), 15_000);
 
-console.error(`gendo-strike: ${broker.mode === "strike" ? `Strike ${network} account` : `paper account at Strike ${network} prices`}; mandate ${mandatePath}`);
+console.error(`gendo-strike: ${broker.mode === "strike" ? `Strike ${network} ${client.subAccountId ? `sub-account ${client.subAccountId}` : "account"}` : `paper account at Strike ${network} prices`}; mandate ${mandatePath}`);
 console.error(`owner dashboard: http://127.0.0.1:${port}/?owner=${ownerToken}`);
 
 if (!v["no-mcp"]) {

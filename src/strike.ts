@@ -49,11 +49,17 @@ const num = (x: unknown) => Number(x ?? 0);
 export class StrikeClient {
   readonly host: string;
   private markets?: Map<string, Market>;
-  constructor(readonly network: StrikeNetwork, private readonly auth?: { key: KeyObject; publicHex: string }) {
+  /** `subAccountId`: trade and read only that Strike sub-account, so the agent can only lose what's in it. */
+  constructor(readonly network: StrikeNetwork, private readonly auth?: { key: KeyObject; publicHex: string }, readonly subAccountId?: string) {
     this.host = STRIKE_HOSTS[network];
   }
 
   private async call<T>(method: string, path: string, body?: unknown, authed = true): Promise<T> {
+    // Scope every account call to the sub-account: reads in the query, writes in the body. Signed as sent.
+    if (authed && this.subAccountId) {
+      if (method === "GET") path += `${path.includes("?") ? "&" : "?"}sub_account_id=${encodeURIComponent(this.subAccountId)}`;
+      else body = { ...(body as object | undefined), sub_account_id: this.subAccountId };
+    }
     const text = body === undefined ? "" : JSON.stringify(body);
     const headers: Record<string, string> = body === undefined ? {} : { "content-type": "application/json" };
     if (authed) {

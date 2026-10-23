@@ -87,3 +87,30 @@ describe("the owner changes the mandate", () => {
     expect(guard.mandate).toEqual(m);
   });
 });
+
+describe("a stop that can't close everything at once", () => {
+  it("says which positions are still open, and keeps trying until they close", async () => {
+    const paper = new PaperBroker(feed({ "BTC-USD": 80_000 }), 1_000);
+    let blocked = true; // the book has no buyers near the price
+    const broker = Object.assign(Object.create(paper), {
+      mode: paper.mode,
+      order: async (s: string, side: "buy" | "sell", size: number, lev: number, reduce: boolean) =>
+        reduce && blocked ? { id: "x", filled: 0, reason: "too little liquidity" } : paper.order(s, side, size, lev, reduce),
+    });
+    const guard = new Guard(broker, m);
+    await guard.trade({ symbol: "BTC-USD", side: "buy", notionalUsd: 200, leverage: 2, reason: "long" });
+    await guard.kill();
+    const s1 = await guard.snapshot();
+    expect(s1.locked).toBe("stopped by the owner");
+    expect(s1.unclosed).toEqual(["BTC-USD"]);
+    expect(s1.journal.filter((e) => e.kind === "unfilled")).toHaveLength(1);
+    await guard.watch(); // still blocked: retried, and not journaled again
+    expect((await guard.snapshot()).journal.filter((e) => e.kind === "unfilled")).toHaveLength(1);
+    blocked = false;
+    await guard.watch();
+    const s2 = await guard.snapshot();
+    expect(s2.positions).toEqual([]);
+    expect(s2.unclosed).toEqual([]);
+    expect(s2.journal[0]).toMatchObject({ kind: "close", symbol: "BTC-USD" });
+  });
+});

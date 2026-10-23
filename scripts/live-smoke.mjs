@@ -22,7 +22,7 @@ const step = (ok, what, detail) => {
 };
 try {
   const m = await call("get_mandate");
-  step(/live account/.test(m.venue), "the guard runs on the live Strike testnet account", m.venue);
+  step(/\(live\)/.test(m.venue), "the guard runs on a live Strike testnet account", m.venue);
   const a0 = await call("get_account");
   step(a0.equity_usd > 5, "reads the account's equity from Strike", `${a0.equity_usd} USD`);
   if (a0.positions.length) throw new Error(`the account already has open positions (${a0.positions.map((p) => p.symbol).join(", ")}): this test closes what it opens, so run it on an account with none`);

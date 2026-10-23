@@ -29,6 +29,10 @@ export type Snapshot = {
   dayPnl: number;
   positions: { symbol: string; size: number; side: "long" | "short"; entryPrice: number; mark: number; notionalUsd: number; leverage: number; upnl: number; liquidationPrice: number }[];
   exposureUsd: number;
+  /** After a stop: positions Strike couldn't close yet (no buyers or sellers near the price). The guard keeps trying. */
+  unclosed: string[];
+  /** Where the guard trades, in words (account or sub-account, or paper). */
+  venue: string;
   journal: Entry[];
 };
 
@@ -144,13 +148,14 @@ export class Guard {
   }
 
   // Not queued: the loss stop runs inside an order's turn and must close at once.
-  private async closeNow(symbol: string, reason: string) {
+  // `quiet`: a retry after a stop, journaled only when it finally closes.
+  private async closeNow(symbol: string, reason: string, quiet = false) {
     const p = (await this.broker.positions()).find((x) => x.symbol === symbol);
     if (!p) return { status: "no_position", symbol };
     try {
       const r = await this.broker.order(symbol, p.size > 0 ? "sell" : "buy", Math.abs(p.size), p.leverage, true);
       if (r.filled === 0) {
-        this.log({ kind: "unfilled", symbol, size: Math.abs(p.size), detail: r.reason, reason });
+        if (!quiet) this.log({ kind: "unfilled", symbol, size: Math.abs(p.size), detail: r.reason, reason });
         return { status: "not_filled", symbol, message: r.reason, next: "The position is still open. Try again in a moment." };
       }
       this.log({ kind: "close", symbol, size: r.filled, detail: r.id, reason });
@@ -182,8 +187,9 @@ export class Guard {
     this.log({ kind: "resume", detail: "resumed by the owner" });
   }
 
-  /** The daily loss stop. Runs before every trade and on a timer. */
+  /** The daily loss stop, and closing what a stop couldn't. Runs before every trade and on a timer. */
   async watch(): Promise<void> {
+    if (this.locked) for (const p of await this.broker.positions()) await this.closeNow(p.symbol, `guard: ${this.locked}`, true);
     const eq = (await this.broker.account()).marginBalance;
     const d = day(this.now());
     if (!this.startEquity || this.startEquity.day !== d) this.startEquity = { day: d, equity: eq };
@@ -202,7 +208,9 @@ export class Guard {
       }),
     );
     const start = this.startEquity?.equity ?? acct.marginBalance;
+    const venue = this.broker.mode === "paper" ? "Paper, at Strike prices" : this.broker.venue ?? "Strike account";
     return {
+      venue, unclosed: this.locked ? positions.map((p) => p.symbol) : [],
       mode: this.broker.mode, mandate: this.mandate, ...(this.locked ? { locked: this.locked } : {}),
       equity: acct.marginBalance, startEquity: start, dayPnl: acct.marginBalance - start,
       positions, exposureUsd: positions.reduce((s, p) => s + p.notionalUsd, 0), journal: this.journal.slice(-100).reverse(),

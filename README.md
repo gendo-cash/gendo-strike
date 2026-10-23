@@ -17,6 +17,7 @@ AI agents can already trade. What stops people from letting them is that today y
 | The agent withdraws your funds | Strike: an API wallet key can trade but can't deposit or withdraw; withdrawals need your own wallet's signature and go only to your wallet | Enforced by Strike |
 | The agent reads or leaks the key | The guard holds the key; the agent only sees tools (`open_position`, `close_position`...) | The agent's process never has it |
 | Wrong markets, too much leverage, positions too big | The mandate, checked before every order | Enforced by the guard |
+| The agent loses more than you set aside for it | Optional: run the guard inside a Strike **sub-account** holding only the agent's budget (`~/.gendo-strike/sub-account`). Every call is scoped to it, so the rest of your account is out of reach | Enforced by Strike |
 | A losing day spirals | The daily loss stop: close everything, refuse new trades until the owner resumes; survives a restart | Enforced by the guard, checked before every order and every 15 s |
 | The agent unlocks itself or loosens its rules | Anyone at the dashboard can press Stop; only the owner's link resumes trading or edits the mandate, so an agent with a web-fetch tool can't | Enforced by the guard |
 | Reducing risk gets blocked | Closing or shrinking a position is always allowed, even when stopped or over a limit | By design |
@@ -80,7 +81,8 @@ node scripts/demo-agent.mjs                # or: a scripted agent that trades an
 **Live on Strike testnet:**
 1. Connect a wallet at [testnet.strikefinance.org](https://testnet.strikefinance.org) and fund the account.
 2. Create an API wallet there (or generate an Ed25519 key and register its public key).
-3. Save the private key in `~/.gendo-strike/api-key` (`chmod 600`). The guard reads it from there, so it never appears in your AI app's config or logs, and never reaches the AI. (`STRIKE_API_KEY` in the environment works too.)
+3. Optional but recommended: create a sub-account for the agent in Strike's app, move its budget there, and save the sub-account's id in `~/.gendo-strike/sub-account`.
+4. Save the private key in `~/.gendo-strike/api-key` (`chmod 600`). The guard reads it from there, so it never appears in your AI app's config or logs, and never reaches the AI. (`STRIKE_API_KEY` in the environment works too.)
 
 **Connect your AI.** Claude Desktop (`claude_desktop_config.json`):
 ```json
@@ -117,7 +119,7 @@ Not tested yet: mainnet, Strike sub-accounts, and the daily loss stop on a live 
 ## Roadmap
 
 - **Capital caps on-chain, with Gendo's Cardano vault.** Owners keep funds in a Gendo vault and give the agent an allowance whose only destination is a deposit into Strike, capped per period. The chain then bounds how much capital an agent can ever put at risk, whatever the guard or the agent does. Gendo's vault, allowance and adapter system already exist on preprod ([gendo.cash](https://gendo.cash)); the missing piece is a Strike deposit adapter.
-- **One Strike sub-account per agent**, so each agent's margin and PnL are isolated.
+- **One Strike sub-account per agent, made by the guard**: today you create the sub-account in Strike's app (an API wallet can't), and the guard trades inside it.
 - **Builder codes**: the guard as a Strike builder, earning a fee share on the agents' volume.
 - **Mandates approved by several owners** in the Gendo app, and the stop button on a phone.
 - **Copy-trading guard**: the same mandate wrapped around Strike copy trading.
@@ -128,5 +130,6 @@ Not tested yet: mainnet, Strike sub-accounts, and the daily loss stop on a live 
 - Market orders only; the guard sizes from the mark price it just checked.
 - Paper mode has no fees, funding or liquidations.
 - The daily loss stop uses Strike's margin balance and resets at 00:00 UTC.
+- A stop can't close a position Strike has no one to trade with near the price (thin testnet books); the guard says which ones are still open and retries every 15 seconds.
 
 Apache-2.0.

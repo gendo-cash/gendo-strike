@@ -139,14 +139,16 @@ const usd = (n) => (n < 0 ? "−" : "") + "$" + Math.abs(n).toLocaleString(undef
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const t = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 function render(s) {
-  $("mode").textContent = s.mode === "strike" ? "Strike account" : "Paper, at Strike prices";
+  $("mode").textContent = s.venue;
   $("mode").className = "pill" + (s.mode === "strike" ? " live" : "");
   $("status").textContent = s.locked ? "Stopped" : "Trading open";
   $("status").className = "pill" + (s.locked ? " stop" : " live");
   $("stop").disabled = !!s.locked;
   $("resume").style.display = s.locked && token ? "" : "none";
   $("banner").style.display = s.locked ? "block" : "none";
-  $("banner").innerHTML = s.locked ? "<b>Trading is stopped:</b> " + esc(s.locked) + ". Positions were closed; the agent can only close, never open." + (token ? "" : " Open this page with your owner link to resume.") : "";
+  $("banner").innerHTML = s.locked ? "<b>Trading is stopped:</b> " + esc(s.locked) + ". " +
+    (s.unclosed.length ? "Still open: " + esc(s.unclosed.join(", ")) + ". Strike has no one to trade with near the price right now; the guard keeps trying every 15 seconds. " : "Every position is closed. ") +
+    "The agent can only close, never open." + (token ? "" : " Open this page with your owner link to resume.") : "";
   $("equity").textContent = usd(s.equity);
   $("pnl").textContent = usd(s.dayPnl); $("pnl").className = "mono " + (s.dayPnl >= 0 ? "pos" : "neg");
   const m = s.mandate, lost = Math.max(0, -s.dayPnl), lp = Math.min(100, (lost / m.maxDailyLossUsd) * 100), ep = Math.min(100, (s.exposureUsd / m.maxExposureUsd) * 100);

@@ -30,3 +30,27 @@ describe("Strike request signing", () => {
     expect(verify(null, Buffer.from(msg), pub, Buffer.from(h["X-API-Wallet-Signature"], "hex"))).toBe(true);
   });
 });
+
+describe("trading inside a Strike sub-account", () => {
+  it("every authenticated call names the sub-account, in the query for reads and in the body for writes, and is signed that way", async () => {
+    const { StrikeClient, apiKeyFromHex } = await import("../src/strike.ts");
+    const seen: { url: string; body?: string; sig: string }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      seen.push({ url, body: init.body as string | undefined, sig: (init.headers as Record<string, string>)["X-API-Wallet-Signature"] ?? "" });
+      return new Response(JSON.stringify({ positions: [], orders: [] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const c = new StrikeClient("testnet", apiKeyFromHex(SEED), "sub-123");
+      await c.positions();
+      await c.placeMarket({ symbol: "ETH-USD", side: "buy", size: "0.01" });
+      await c.markPrice("ETH-USD").catch(() => undefined); // public: no sub-account, no signature
+    } finally {
+      globalThis.fetch = real;
+    }
+    expect(seen[0]!.url).toBe("https://api-v2-testnet.strikefinance.org/v2/positions?sub_account_id=sub-123");
+    expect(JSON.parse(seen[1]!.body!)).toMatchObject({ symbol: "ETH-USD", sub_account_id: "sub-123" });
+    expect(seen[2]!.url).not.toContain("sub_account_id");
+    expect(seen[2]!.sig).toBe("");
+  });
+});

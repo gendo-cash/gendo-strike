@@ -8,6 +8,8 @@ export type Fill = { id: string; filled: number; reason?: string };
 
 export interface Broker {
   readonly mode: "strike" | "paper";
+  /** Where orders go, in words. */
+  readonly venue?: string;
   account(): Promise<Account>;
   positions(): Promise<Position[]>;
   markPrice(symbol: string): Promise<number>;
@@ -19,7 +21,10 @@ export interface Broker {
 
 export class StrikeBroker implements Broker {
   readonly mode = "strike" as const;
-  constructor(readonly client: StrikeClient) {}
+  readonly venue: string;
+  constructor(readonly client: StrikeClient) {
+    this.venue = `Strike ${client.network} ${client.subAccountId ? "sub-account" : "account"}`;
+  }
   account() {
     return this.client.account();
   }

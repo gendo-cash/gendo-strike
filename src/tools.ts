@@ -24,7 +24,7 @@ export function registerTools(server: McpServer, guard: Guard, data: Pick<Strike
     { title: "Read the mandate", description: "Your owner's rules: allowed markets, max leverage, max position and total exposure (USD), daily loss limit, order rate, and whether trading is stopped.", annotations: { readOnlyHint: true } },
     async () => {
       const s = await guard.snapshot();
-      return json({ mandate: s.mandate, trading: s.locked ? `stopped: ${s.locked}` : "open", venue: `Strike Finance (${s.mode === "strike" ? "live account" : "paper account at Strike's mark prices"})` });
+      return json({ mandate: s.mandate, trading: s.locked ? `stopped: ${s.locked}` : "open", venue: `${s.venue}${s.mode === "strike" ? " (live)" : ""}` });
     },
   );
 
