@@ -1,7 +1,8 @@
 // gendo-strike: an MCP server an AI app starts, plus the owner's dashboard, in one process.
 //
 //   gendo-strike [--mandate mandate.json] [--home ~/.gendo-strike] [--port 8711] [--network testnet|mainnet]
-//   env: STRIKE_API_KEY   the Strike API wallet's private key (hex). Without it, a paper account at Strike's prices.
+//   The Strike API wallet's private key (hex): <home>/api-key (mode 600), or STRIKE_API_KEY.
+//   Without one, a paper account at Strike's prices.
 //
 // The AI app (Claude Desktop, Claude Code, Cursor...) only sees the tools. The key stays in this process.
 import { randomBytes } from "node:crypto";
@@ -38,7 +39,9 @@ if (problems.length) {
 
 const network = (v.network ?? process.env.STRIKE_NETWORK ?? "testnet") as StrikeNetwork;
 if (network !== "testnet" && network !== "mainnet") throw new Error("--network is testnet or mainnet");
-const keyHex = process.env.STRIKE_API_KEY?.trim();
+// The key file keeps the secret out of the AI app's own config, which the app (and its logs) can read.
+const keyFile = join(home, "api-key");
+const keyHex = process.env.STRIKE_API_KEY?.trim() || (existsSync(keyFile) ? readFileSync(keyFile, "utf8").trim() : "");
 const client = new StrikeClient(network, keyHex ? apiKeyFromHex(keyHex) : undefined);
 const broker = keyHex ? new StrikeBroker(client) : new PaperBroker(client, Number(process.env.PAPER_USD ?? 1000));
 const guard = new Guard(broker, mandate, join(home, broker.mode === "strike" ? `journal-${network}.jsonl` : "journal-paper.jsonl"), Date.now, (m) =>

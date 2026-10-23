@@ -79,7 +79,7 @@ node scripts/demo-agent.mjs                # or: a scripted agent that trades an
 **Live on Strike testnet:**
 1. Connect a wallet at [testnet.strikefinance.org](https://testnet.strikefinance.org) and fund the account.
 2. Create an API wallet there (or generate an Ed25519 key and register its public key).
-3. Put the private key in `STRIKE_API_KEY` for the guard. It never goes to the AI.
+3. Save the private key in `~/.gendo-strike/api-key` (`chmod 600`). The guard reads it from there, so it never appears in your AI app's config or logs, and never reaches the AI. (`STRIKE_API_KEY` in the environment works too.)
 
 **Connect your AI.** Claude Desktop (`claude_desktop_config.json`):
 ```json
@@ -87,12 +87,12 @@ node scripts/demo-agent.mjs                # or: a scripted agent that trades an
   "mcpServers": {
     "strike": {
       "command": "/path/to/gendo-strike/bin/gendo-strike",
-      "env": { "STRIKE_API_KEY": "<your API wallet private key>", "STRIKE_NETWORK": "testnet" }
+      "env": { "STRIKE_NETWORK": "testnet" }
     }
   }
 }
 ```
-Claude Code: `claude mcp add strike --env STRIKE_API_KEY=<key> -- /path/to/gendo-strike/bin/gendo-strike`
+Claude Code: `claude mcp add strike -- /path/to/gendo-strike/bin/gendo-strike`
 
 The guard prints the dashboard link (`http://127.0.0.1:8711/?owner=...`) to its log, and keeps the token in `~/.gendo-strike/owner-token`. Open that link to see everything and to **edit the mandate** (markets as toggles, the limits as numbers); a change applies to the agent's next order, is checked before it's saved, and shows in the journal. Without the owner link the page is read-only: anyone there can press Stop, nobody can loosen the rules or resume. The mandate is saved in `~/.gendo-strike/mandate.json`:
 ```json
